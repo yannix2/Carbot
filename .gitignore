@@ -1,0 +1,15 @@
+.env/
+env/
+
+# Ignore SQLite3 database
+*.sqlite3
+*.db
+*.dll
+*.bin
+# Bytecode and cache
+__pycache__/
+*.pyc
+
+# OS/system files
+.DS_Store
+Thumbs.db
