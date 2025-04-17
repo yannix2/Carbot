@@ -46,7 +46,7 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 current_llm = os.getenv("CURRENT_LLM", "mistral:latest")
 JWT_EXPIRATION_DELTA = timedelta(hours=1)  # Token expiration time is now 1 hour
 client = MongoClient(MONGO_URI, maxPoolSize=10)
-db = client["chatbot_db"]
+db = client["Carbot"]
 conversation_collection = db["conversation_history"]
 feedback_collection = db["feedback_history"]
 user_collection = db["users"]  # Collection for storing user data
