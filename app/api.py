@@ -571,25 +571,28 @@ async def mailing(
     message: str = Form(...),
 ):
     # Prepare the email data
-    email_data = {
-        'Messages': [
-            {
-               'From': {
-                     'Email':email,
-                    'Name': 'CLIENTS CARBOT'
-                },
-                "To": [
-                    {
-                        "Email": 'club.tunivisonstekup@gmail.com',
-                    }
-                ],
-                "Subject": subject,
-                "TextPart": message,
-                "HTMLPart": f"<p>{message}</p>",
+   email_data = {
+    'Messages': [
+        {
+            'From': {
+                'Email': 'club.tunivisonstekup@gmail.com',  # Verified sender
+                'Name': 'Carbot Contact Form'
+            },
+            "To": [
+                {
+                    "Email": 'club.tunivisonstekup@gmail.com',
+                }
+            ],
+            "Subject": f"Support Request: {subject}",
+            "TextPart": f"From: {email}\n\n{message}",
+            "HTMLPart": f"<p><strong>From:</strong> {email}</p><p>{message}</p>",
+            "ReplyTo": {
+                "Email": email,  # Let you reply directly to the user
+                "Name": email.split('@')[0]  # Just a nice touch
             }
-        ]
-    }
-
+        }
+    ]
+}
     try:
         # Send the email via Mailjet API
         result = mailjet.send.create(data=email_data)
