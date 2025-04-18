@@ -571,28 +571,28 @@ async def mailing(
     message: str = Form(...),
 ):
     # Prepare the email data
-   email_data = {
-    'Messages': [
-        {
-            'From': {
-                'Email': 'club.tunivisonstekup@gmail.com',  # Verified sender
-                'Name': 'Carbot Contact Form'
-            },
-            "To": [
-                {
-                    "Email": 'club.tunivisonstekup@gmail.com',
+    email_data = {
+        'Messages': [
+            {
+                'From': {
+                    'Email': 'club.tunivisonstekup@gmail.com',  # Verified sender
+                    'Name': 'Carbot Contact Form'
+                },
+                "To": [
+                    {
+                        "Email": 'club.tunivisonstekup@gmail.com',
+                    }
+                ],
+                "Subject": f"Support Request: {subject}",
+                "TextPart": f"From: {email}\n\n{message}",
+                "HTMLPart": f"<p><strong>From:</strong> {email}</p><p>{message}</p>",
+                "ReplyTo": {
+                    "Email": email,
+                    "Name": email.split('@')[0]
                 }
-            ],
-            "Subject": f"Support Request: {subject}",
-            "TextPart": f"From: {email}\n\n{message}",
-            "HTMLPart": f"<p><strong>From:</strong> {email}</p><p>{message}</p>",
-            "ReplyTo": {
-                "Email": email,  # Let you reply directly to the user
-                "Name": email.split('@')[0]  # Just a nice touch
             }
-        }
-    ]
-}
+        ]
+    }
     try:
         # Send the email via Mailjet API
         result = mailjet.send.create(data=email_data)
@@ -602,15 +602,16 @@ async def mailing(
             raise HTTPException(status_code=500, detail="Failed to send email")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error sending email: {str(e)}")
-    
+
 def decode_token(token: str):
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
-        return payload  # Decoded information, which could contain the user's details
+        return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=400, detail="Token has expired.")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=400, detail="Invalid token.")
+
 logger = logging.getLogger("uvicorn.error")
 
 @router.get("/verify-account")
