@@ -212,7 +212,7 @@ def send_verification_email(email: str, verification_token: str):
     mailjet = Client(auth=(api_key, api_secret), version='v3.1')
 
     # Modify the verification link to point to the front-end page
-    verification_link = f"https://carbot-w720.onrender.com/verify-account?token={verification_token}"
+    verification_link = f"https://carbot-w720.onrender.com/verify_account?token={verification_token}"
 
     # HTML content for the email
     html_content = f"""
