@@ -610,7 +610,7 @@ def decode_token(token: str):
         raise HTTPException(status_code=400, detail="Invalid token.")
 logger = logging.getLogger("uvicorn.error")
 
-@router.get("/verify-account")
+@router.post("/verify-account")
 async def verify_account(token: str = Query(...)):
     try:
         # Log the token to see what we're receiving
