@@ -22,4 +22,4 @@ templates = Jinja2Templates(directory="templates")
 # Root route
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to the FastAPI application!"}
+    return {"message": "Welcome to the Carbot Application!"}
