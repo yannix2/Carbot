@@ -212,7 +212,7 @@ def send_verification_email(email: str, verification_token: str):
     mailjet = Client(auth=(api_key, api_secret), version='v3.1')
 
     # Modify the verification link to point to the front-end page
-    verification_link = f"https://carbot-w720.onrender.com/verify_account?token={verification_token}"
+    verification_link = f"https://carbot-75uf.onrender.com/verify_account?token={verification_token}"
 
     # HTML content for the email
     html_content = f"""
@@ -343,12 +343,18 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 @router.post("/chatPsy")
 async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: MongoClient = Depends(get_db)):
+    memory = ConversationBufferMemory(
+    memory_key="chat_history",
+    return_messages=True,
+    input_key="question"
+)
     user_id = get_user_from_token(token)
     user_model_preference = user_llm_preferences.get(user_id, "mistral:latest")  # Use user's model preference if available.
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vectorstore = Chroma(persist_directory="path/to/chroma", embedding_function=embeddings)
-     # or another embedding model
-
+    vectorstore = Chroma(
+    persist_directory="/tmp/chroma",
+    embedding_function=embeddings
+)
     # Detect language and switch LLM model accordingly (if no user preference)
     language = detect_language(request.question)
     if language == "fr" and user_model_preference != "mistral:latest":
@@ -520,7 +526,7 @@ async def forgot_password(request: ForgotPasswordRequest):
     
     # Create the reset token
     reset_token = create_reset_token(request.email)
-    reset_link = f"https://carbot-w720.onrender.com/reset-password/{reset_token}"  
+    reset_link = f"https://carbot-75uf.onrender.com/reset-password/{reset_token}"  
     send_email(request.email, reset_link)
     
     return {"message": "If the email exists, a reset link has been sent to your email address."}
