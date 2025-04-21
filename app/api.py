@@ -345,7 +345,9 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: MongoClient = Depends(get_db)):
     user_id = get_user_from_token(token)
     user_model_preference = user_llm_preferences.get(user_id, "mistral:latest")  # Use user's model preference if available.
-    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+    embeddings = OllamaEmbeddings(
+    model="nomic-embed-text",
+    base_url="https://clothing-birthday-longitude-congo.trycloudflare.com")
     vectorstore = Chroma(persist_directory="path/to/chroma", embedding_function=embeddings)
      # or another embedding model
 
