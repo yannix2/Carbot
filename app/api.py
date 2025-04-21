@@ -212,7 +212,7 @@ def send_verification_email(email: str, verification_token: str):
     mailjet = Client(auth=(api_key, api_secret), version='v3.1')
 
     # Modify the verification link to point to the front-end page
-    verification_link = f"https://carbot-w720.onrender.com/verify-account?token={verification_token}"
+    verification_link = f"https://carbot-w720.onrender.com/verify_account?token={verification_token}"
 
     # HTML content for the email
     html_content = f"""
@@ -574,25 +574,22 @@ async def mailing(
     email_data = {
         'Messages': [
             {
-                'From': {
-                    'Email': 'club.tunivisonstekup@gmail.com',  # Verified sender
-                    'Name': 'Carbot Contact Form'
+               'From': {
+                     'Email':email,
+                    'Name': 'CLIENTS CARBOT'
                 },
                 "To": [
                     {
                         "Email": 'club.tunivisonstekup@gmail.com',
                     }
                 ],
-                "Subject": f"Support Request: {subject}",
-                "TextPart": f"From: {email}\n\n{message}",
-                "HTMLPart": f"<p><strong>From:</strong> {email}</p><p>{message}</p>",
-                "ReplyTo": {
-                    "Email": email,
-                    "Name": email.split('@')[0]
-                }
+                "Subject": subject,
+                "TextPart": message,
+                "HTMLPart": f"<p>{message}</p>",
             }
         ]
     }
+
     try:
         # Send the email via Mailjet API
         result = mailjet.send.create(data=email_data)
@@ -602,19 +599,18 @@ async def mailing(
             raise HTTPException(status_code=500, detail="Failed to send email")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error sending email: {str(e)}")
-
+    
 def decode_token(token: str):
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=["HS256"])
-        return payload
+        return payload  # Decoded information, which could contain the user's details
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=400, detail="Token has expired.")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=400, detail="Invalid token.")
-
 logger = logging.getLogger("uvicorn.error")
 
-@router.get("/verify-account")
+@router.post("/verify-account")
 async def verify_account(token: str = Query(...)):
     try:
         # Log the token to see what we're receiving
