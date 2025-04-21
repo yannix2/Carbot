@@ -1,4 +1,4 @@
-.env/
+
 env/
 
 # Ignore SQLite3 database
