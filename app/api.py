@@ -363,21 +363,23 @@ async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: M
         logging.info(f"User model preference: {user_model_preference}")
 
         # Embeddings & vecteurs
-        os.makedirs("/tmp/chroma", exist_ok=True)
+        logging.info("Loading embeddings...")
         embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        vectorstore = Chroma(
-            persist_directory="/tmp/chroma",
-            embedding_function=embeddings
-        )
+
+        # Use in-memory Chroma (no persist_directory)
+        logging.info("Creating in-memory vectorstore...")
+        vectorstore = Chroma(embedding_function=embeddings)
 
         # Détection de la langue
         language = detect_language(request.question)
         logging.info(f"Detected language: {language}")
 
+        # Choix du modèle
         if language == "fr" and user_model_preference != "mistralai/mistral-7b-instruct":
             current_llm = "meta-llama/llama-3-8b-instruct"
         else:
             current_llm = user_model_preference
+        logging.info(f"Using LLM: {current_llm}")
 
         # Recherche contextuelle
         logging.info("Performing similarity search...")
@@ -405,6 +407,7 @@ async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: M
     except Exception as e:
         logging.exception("Erreur dans /chatPsy")
         raise HTTPException(status_code=500, detail=f"Erreur serveur: {type(e).__name__} - {str(e)}")
+
 # Endpoint for switching LLM based on user preferences
 user_llm_preferences = {}
 
