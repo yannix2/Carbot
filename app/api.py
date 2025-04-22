@@ -37,7 +37,7 @@ from langchain.embeddings import OllamaEmbeddings
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import mailjet_rest
-
+import openai
 
 load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI2")
@@ -53,6 +53,8 @@ feedback_collection = db["feedback_history"]
 user_collection = db["users"]  # Collection for storing user data
 api_key = 'bc3364428a653020a27e3981859f653b'
 api_secret = 'c97fad45a9c9bddca4b0fcfce2edbcb5'
+openai.api_key = os.getenv("OPENROUTER_API_KEY")
+openai.api_base = "https://openrouter.ai/api/v1" 
 
 # FastAPI app and router setup
 app = FastAPI()
@@ -175,23 +177,20 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 # Language detection function
 def detect_language(text: str):
     return detect(text)
-
 def call_llm(question, context, history):
-    if current_llm in ["mistral:latest", "llama3:latest"]:
-        response = ollama.chat(model=current_llm, messages=[ 
-            {"role": "system", "content": "Tu es un assistant expert en pièces de rechange automobile. Toutes les réponses doivent être en français ou en anglais."},
-            {"role": "user", "content": question}
-        ])
-        
-        logging.info(f"LLM raw response: {response}")
-
-        if hasattr(response, 'message') and hasattr(response.message, 'content'):
-            return response.message.content 
-        else:
-            raise HTTPException(status_code=500, detail="Response format error.")
-    else:
-        raise HTTPException(status_code=500, detail="No valid LLM model selected.")
-
+    try:
+        response = openai.ChatCompletion.create(
+            model="mistralai/mistral-7b-instruct",  # ou "meta-llama/llama-3-8b-instruct"
+            messages=[
+                {"role": "system", "content": "Tu es un assistant expert en pièces de rechange automobile. Réponds toujours en français ou anglais."},
+                {"role": "user", "content": question}
+            ],
+            temperature=0.7,
+        )
+        return response['choices'][0]['message']['content']
+    except Exception as e:
+        logging.exception("LLM API error")
+        raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
 
 
 class Token(BaseModel):
@@ -343,41 +342,56 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 @router.post("/chatPsy")
 async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: MongoClient = Depends(get_db)):
-    memory = ConversationBufferMemory(
-    memory_key="chat_history",
-    return_messages=True,
-    input_key="question"
-)
-    user_id = get_user_from_token(token)
-    user_model_preference = user_llm_preferences.get(user_id, "mistral:latest")  # Use user's model preference if available.
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vectorstore = Chroma(
-    persist_directory="/tmp/chroma",
-    embedding_function=embeddings
-)
-    # Detect language and switch LLM model accordingly (if no user preference)
-    language = detect_language(request.question)
-    if language == "fr" and user_model_preference != "mistral:latest":
-        current_llm = "llama3:latest"
-    else:
-        current_llm = user_model_preference  # Use user's selected model preference
+    try:
+        # Mémoire conversationnelle
+        memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True,
+            input_key="question"
+        )
 
-    context = vectorstore.similarity_search(request.question, k=5)
-    response = call_llm(request.question, context, memory.load_memory_variables({}))
-    
-    # Log interaction
-    logging.info(f"User: {request.question}")
-    logging.info(f"Bot: {response}")
-    
-    # Store conversation history in MongoDB
-    conversation_data = {
-        "user_message": request.question,
-        "bot_message": response,
-        "user_id": user_id
-    }
-    conversation_collection.insert_one(conversation_data)
-    
-    return jsonable_encoder({"response": response})
+        # Infos utilisateur
+        user_id = get_user_from_token(token)
+        user_model_preference = user_llm_preferences.get(user_id, "mistralai/mistral-7b-instruct")
+
+        # Embeddings & vecteurs
+        os.makedirs("/tmp/chroma", exist_ok=True)
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        vectorstore = Chroma(
+            persist_directory="/tmp/chroma",
+            embedding_function=embeddings
+        )
+
+        # Détection de la langue
+        language = detect_language(request.question)
+        if language == "fr" and user_model_preference != "mistralai/mistral-7b-instruct":
+            current_llm = "meta-llama/llama-3-8b-instruct"
+        else:
+            current_llm = user_model_preference
+
+        # Recherche contextuelle
+        context = vectorstore.similarity_search(request.question, k=5)
+
+        # Appel LLM
+        response = call_llm(request.question, context, memory.load_memory_variables({}))
+
+        # Logs
+        logging.info(f"User: {request.question}")
+        logging.info(f"Bot: {response}")
+
+        # Sauvegarde dans MongoDB
+        conversation_data = {
+            "user_message": request.question,
+            "bot_message": response,
+            "user_id": user_id
+        }
+        conversation_collection.insert_one(conversation_data)
+
+        return jsonable_encoder({"response": response})
+
+    except Exception as e:
+        logging.exception("Erreur dans /chatPsy")
+        raise HTTPException(status_code=500, detail=f"Erreur serveur: {type(e).__name__} - {str(e)}")
 # Endpoint for switching LLM based on user preferences
 user_llm_preferences = {}
 
