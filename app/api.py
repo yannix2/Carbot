@@ -249,7 +249,7 @@ def send_verification_email(email: str, verification_token: str):
     mailjet = Client(auth=(api_key, api_secret), version='v3.1')
 
     # Modify the verification link to point to the front-end page
-    verification_link = f"https://carbot-75uf.onrender.com/verify_account?token={verification_token}"
+    verification_link = f"https://carbot-7xh1.onrender.com/verify-account?token={verification_token}"
 
     # HTML content for the email
     html_content = f"""
@@ -559,7 +559,7 @@ async def forgot_password(request: ForgotPasswordRequest):
     
     # Create the reset token
     reset_token = create_reset_token(request.email)
-    reset_link = f"https://carbot-75uf.onrender.com/reset-password/{reset_token}"  
+    reset_link = f"https://carbot-7xh1.onrender.com/reset-password/{reset_token}"  
     send_email(request.email, reset_link)
     
     return {"message": "If the email exists, a reset link has been sent to your email address."}
