@@ -562,7 +562,7 @@ async def forgot_password(request: ForgotPasswordRequest):
     reset_link = f"https://carbot-7xh1.onrender.com/reset-password/{reset_token}"  
     send_email(request.email, reset_link)
     
-    return {"message": "If the email exists, a reset link has been sent to your email address."}
+    return {"message": "A reset link has been sent to your email address."}
 
 class ResetPasswordRequest(BaseModel):
     reset_token: str
@@ -609,28 +609,32 @@ async def mailing(
     subject: str = Form(...),
     message: str = Form(...),
 ):
-    # Prepare the email data
+    # Use your Mailjet verified sender here
+    verified_sender = "club.tunivisonstekup@gmail.com"
+
     email_data = {
         'Messages': [
             {
-               'From': {
-                     'Email':email,
-                    'Name': 'CLIENTS CARBOT'
+                'From': {
+                    'Email': verified_sender,
+                    'Name': 'SUPPORT CARBOT'
                 },
                 "To": [
                     {
-                        "Email": 'club.tunivisonstekup@gmail.com',
+                        "Email": verified_sender,
                     }
                 ],
                 "Subject": subject,
-                "TextPart": message,
-                "HTMLPart": f"<p>{message}</p>",
+                "TextPart": f"Message from {email}:\n\n{message}",
+                "HTMLPart": f"<p><strong>From:</strong> {email}</p><p>{message}</p>",
+                "ReplyTo": {
+                    "Email": email  # So you can reply directly to client
+                }
             }
         ]
     }
 
     try:
-        # Send the email via Mailjet API
         result = mailjet.send.create(data=email_data)
         if result.status_code == 200:
             return {"detail": "Email sent successfully"}
