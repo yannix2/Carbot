@@ -342,7 +342,12 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 @router.post("/chatPsy")
 async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: MongoClient = Depends(get_db)):
+    logging.info("Received /chatPsy request")
+
     try:
+        # Log request data for debugging
+        logging.info(f"Request Data: {request.dict()}")
+
         # Mémoire conversationnelle
         memory = ConversationBufferMemory(
             memory_key="chat_history",
@@ -352,7 +357,10 @@ async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: M
 
         # Infos utilisateur
         user_id = get_user_from_token(token)
+        logging.info(f"User ID from token: {user_id}")
+
         user_model_preference = user_llm_preferences.get(user_id, "mistralai/mistral-7b-instruct")
+        logging.info(f"User model preference: {user_model_preference}")
 
         # Embeddings & vecteurs
         os.makedirs("/tmp/chroma", exist_ok=True)
@@ -364,15 +372,19 @@ async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: M
 
         # Détection de la langue
         language = detect_language(request.question)
+        logging.info(f"Detected language: {language}")
+
         if language == "fr" and user_model_preference != "mistralai/mistral-7b-instruct":
             current_llm = "meta-llama/llama-3-8b-instruct"
         else:
             current_llm = user_model_preference
 
         # Recherche contextuelle
+        logging.info("Performing similarity search...")
         context = vectorstore.similarity_search(request.question, k=5)
 
         # Appel LLM
+        logging.info("Calling LLM...")
         response = call_llm(request.question, context, memory.load_memory_variables({}))
 
         # Logs
@@ -380,6 +392,7 @@ async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: M
         logging.info(f"Bot: {response}")
 
         # Sauvegarde dans MongoDB
+        logging.info("Saving conversation data to MongoDB...")
         conversation_data = {
             "user_message": request.question,
             "bot_message": response,
