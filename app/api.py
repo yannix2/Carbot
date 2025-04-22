@@ -15,6 +15,8 @@ from dotenv import load_dotenv
 from fastapi.encoders import jsonable_encoder
 from pathlib import Path
 import ollama
+import requests
+from langchain.vectorstores import Chroma
 from langdetect import detect
 import logging
 from pymongo import MongoClient
@@ -32,15 +34,17 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 import smtplib
 from email.message import EmailMessage
 import uuid
+import httpx
 from mailjet_rest import Client
 from langchain.embeddings import OllamaEmbeddings
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 import mailjet_rest
 import openai
-
+import json
 load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI2")
+
 print(f"MONGO_URI: {MONGO_URI}")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -55,13 +59,18 @@ api_key = 'bc3364428a653020a27e3981859f653b'
 api_secret = 'c97fad45a9c9bddca4b0fcfce2edbcb5'
 openai.api_key = os.getenv("OPENROUTER_API_KEY")
 openai.api_base = "https://openrouter.ai/api/v1" 
-
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions" 
+persist_directory = "MyVectorDB2.0"
+embedding_function = HuggingFaceEmbeddings(model_name="sentence-transformers/multi-qa-MiniLM-L6-cos-v1")
+vectorstore = Chroma(persist_directory=persist_directory, embedding_function=embedding_function)
 # FastAPI app and router setup
 app = FastAPI()
 router = APIRouter()
 # Set up the absolute path to the profile_pics folder
 
 logging.basicConfig(level=logging.INFO)
+
 
 # Password encryption context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -86,16 +95,12 @@ def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + JWT_EXPIRATION_DELTA
     to_encode.update({"exp": expire})
-
-    logging.debug(f"JWT Payload: {to_encode}")  # Log the data before encoding
-
     try:
         encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
         return encoded_jwt
     except Exception as e:
         logging.error(f"Error encoding JWT: {e}")
         raise HTTPException(status_code=500, detail="Error creating access token")
-
 
 def get_user_from_token(token: str):
     try:
@@ -177,22 +182,55 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 # Language detection function
 def detect_language(text: str):
     return detect(text)
-def call_llm(question, context, history):
+def chat_with_groq(question: str, context: str = "") -> str:
+    prompt = f"""
+    Réponds à la question suivante en utilisant le contexte fourni si nécessaire.
+
+    CONTEXTE:
+    {context}
+
+    QUESTION:
+    {question}
+    """
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    # Use 'llama-3.3-70b-versatile' as the model
+    payload = {
+        "model": "llama-3.3-70b-versatile",  # Updated model name
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.5,  # Optional, adjust as needed
+        "max_tokens": 4096  # You can adjust this according to the model's limits
+    }
+
     try:
-        response = openai.ChatCompletion.create(
-            model="mistralai/mistral-7b-instruct",  # ou "meta-llama/llama-3-8b-instruct"
-            messages=[
-                {"role": "system", "content": "Tu es un assistant expert en pièces de rechange automobile. Réponds toujours en français ou anglais."},
-                {"role": "user", "content": question}
-            ],
-            temperature=0.7,
-        )
-        return response['choices'][0]['message']['content']
-    except Exception as e:
-        logging.exception("LLM API error")
-        raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
+        response = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+        response.raise_for_status()  # Will raise HTTPError for bad status codes
 
+        if response.status_code == 200:
+            response_json = response.json()
 
+            # Extracting the message from the response
+            if 'choices' in response_json and len(response_json['choices']) > 0:
+                return response_json['choices'][0]['message']['content']
+            else:
+                logging.error(f"Unexpected response format: {response_json}")
+                return "An unexpected error occurred."
+        else:
+            logging.error(f"Unexpected status code: {response.status_code}")
+            logging.error(f"Response body: {response.text}")
+            return "An error occurred while processing your request."
+
+    except requests.exceptions.HTTPError as e:
+        logging.error(f"HTTP error occurred: {e}")
+        logging.error(f"Response body: {response.text}")
+        return "An error occurred while processing your request."
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Request failed: {e}")
+        return "An error occurred while processing your request."
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -342,46 +380,27 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 @router.post("/chatPsy")
 async def chat(request: QueryRequest, token: str = Depends(oauth2_scheme), db: MongoClient = Depends(get_db)):
+    logging.info("Received /chatPsy request")
+
     try:
-        # Mémoire conversationnelle
-        memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True,
-            input_key="question"
-        )
-
-        # Infos utilisateur
         user_id = get_user_from_token(token)
-        user_model_preference = user_llm_preferences.get(user_id, "mistralai/mistral-7b-instruct")
+        logging.info(f"User ID from token: {user_id}")
 
-        # Embeddings & vecteurs
-        os.makedirs("/tmp/chroma", exist_ok=True)
-        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        vectorstore = Chroma(
-            persist_directory="/tmp/chroma",
-            embedding_function=embeddings
-        )
+        question = request.question
+        logging.info(f"User question: {question}")
 
-        # Détection de la langue
-        language = detect_language(request.question)
-        if language == "fr" and user_model_preference != "mistralai/mistral-7b-instruct":
-            current_llm = "meta-llama/llama-3-8b-instruct"
-        else:
-            current_llm = user_model_preference
+        # Context retrieval
+        context_docs = vectorstore.similarity_search(question, k=5)
+        context = "\n".join([doc.page_content for doc in context_docs])
+        logging.info("Retrieved context from vectorstore.")
 
-        # Recherche contextuelle
-        context = vectorstore.similarity_search(request.question, k=5)
+        # Call Groq LLM
+        response = chat_with_groq(question=question, context=context)
+        logging.info(f"LLM Response: {response}")
 
-        # Appel LLM
-        response = call_llm(request.question, context, memory.load_memory_variables({}))
-
-        # Logs
-        logging.info(f"User: {request.question}")
-        logging.info(f"Bot: {response}")
-
-        # Sauvegarde dans MongoDB
+        # Save to MongoDB
         conversation_data = {
-            "user_message": request.question,
+            "user_message": question,
             "bot_message": response,
             "user_id": user_id
         }
@@ -460,7 +479,7 @@ def get_user_from_token(token: str):
         if not username:
             raise HTTPException(status_code=403, detail="Could not validate credentials")
         return username
-    except jwt.PyJWTError:
+    except jwt.jwtError:
         raise HTTPException(status_code=403, detail="Could not validate credentials")
 @router.put("/update-password")
 async def update_password(
